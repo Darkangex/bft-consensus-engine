@@ -77,6 +77,33 @@ impl NodeKeyPair {
         }
     }
 
+    /// Sign a consensus message with replay protection context.
+    ///
+    /// The signature is computed over `chain_id || view || payload`,
+    /// preventing messages from being replayed across chains or views.
+    /// This is the production-safe variant of `sign_consensus`.
+    pub fn sign_consensus_with_context(
+        &self,
+        msg: &ConsensusMessage,
+        chain_id: &str,
+        view: u64,
+    ) -> SignedMessage {
+        let payload = bincode::serialize(msg).expect("consensus msg serialization infallible");
+
+        // Build domain-separated signing input: chain_id || view || payload
+        let mut signing_input = Vec::with_capacity(chain_id.len() + 8 + payload.len());
+        signing_input.extend_from_slice(chain_id.as_bytes());
+        signing_input.extend_from_slice(&view.to_le_bytes());
+        signing_input.extend_from_slice(&payload);
+
+        let signature = self.sign(&signing_input);
+        SignedMessage {
+            sender: self.node_id,
+            payload,
+            signature,
+        }
+    }
+
     /// Export the verifying (public) key as bytes.
     pub fn public_key_bytes(&self) -> [u8; 32] {
         self.verifying_key.to_bytes()
@@ -196,6 +223,42 @@ pub fn verify_signed_message(
     Ok(msg)
 }
 
+/// Verify a `SignedMessage` with replay protection context.
+///
+/// Reconstructs the domain-separated signing input `chain_id || view || payload`
+/// and verifies the signature against it. This rejects messages signed
+/// under a different chain_id or view number.
+pub fn verify_signed_message_with_context(
+    key_store: &KeyStore,
+    signed: &SignedMessage,
+    chain_id: &str,
+    view: u64,
+) -> Result<ConsensusMessage, CryptoError> {
+    // ── Step 1: look up sender's public key ──
+    let vk = key_store
+        .get(signed.sender)
+        .ok_or(CryptoError::UnknownSender {
+            node_id: signed.sender,
+        })?;
+
+    // ── Step 2: reconstruct domain-separated signing input ──
+    let mut signing_input = Vec::with_capacity(chain_id.len() + 8 + signed.payload.len());
+    signing_input.extend_from_slice(chain_id.as_bytes());
+    signing_input.extend_from_slice(&view.to_le_bytes());
+    signing_input.extend_from_slice(&signed.payload);
+
+    // ── Step 3: verify signature over reconstructed input ──
+    verify_signature(vk, &signing_input, &signed.signature)?;
+
+    // ── Step 4: deserialize the consensus message ──
+    let msg: ConsensusMessage =
+        bincode::deserialize(&signed.payload).map_err(|e| CryptoError::DeserializationFailed {
+            reason: e.to_string(),
+        })?;
+
+    Ok(msg)
+}
+
 /// Verify a signed message asynchronously by offloading to a blocking
 /// thread pool. This prevents signature verification from blocking
 /// the Tokio async reactor.
@@ -208,6 +271,26 @@ pub async fn verify_signed_message_async(
         .map_err(|e| CryptoError::TaskJoinError {
             reason: e.to_string(),
         })?
+}
+
+/// Verify a signed message with replay protection context, asynchronously.
+///
+/// Offloads CPU-intensive Ed25519 verification to `spawn_blocking`,
+/// preventing reactor thread starvation. Also validates domain-separated
+/// context (chain_id + view) to reject replayed messages.
+pub async fn verify_signed_message_with_context_async(
+    key_store: KeyStore,
+    signed: SignedMessage,
+    chain_id: String,
+    view: u64,
+) -> Result<ConsensusMessage, CryptoError> {
+    tokio::task::spawn_blocking(move || {
+        verify_signed_message_with_context(&key_store, &signed, &chain_id, view)
+    })
+    .await
+    .map_err(|e| CryptoError::TaskJoinError {
+        reason: e.to_string(),
+    })?
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -1,13 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════
 //  bft-node — Full BFT consensus node binary
-//  Version: 0.1.0
+//  Version: 0.2.0 (Hardened)
 // ═══════════════════════════════════════════════════════════════════
 //
 //  Integrates all components:
-//    - Consensus engine (BFT protocol)
+//    - Consensus engine (BFT protocol) with PaceMaker
 //    - Storage engine (WAL + LSM-tree)
 //    - Network transport (simulated or TCP)
-//    - Crypto (Ed25519 signing/verification)
+//    - Crypto (Ed25519 signing/verification with replay protection)
+//    - Graceful shutdown via CancellationToken
 //
 //  Usage:
 //    bft-node --id 0 --cluster-size 4 --data-dir ./data/node0
@@ -20,6 +21,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use bft_consensus::ConsensusEngine;
@@ -61,6 +63,10 @@ struct Args {
     /// Number of test operations to run in demo mode.
     #[arg(long, default_value_t = 10)]
     demo_ops: usize,
+
+    /// Chain ID for replay protection.
+    #[arg(long, default_value = "bft-mainnet-v1")]
+    chain_id: String,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -84,7 +90,8 @@ async fn main() {
         cluster_size = args.cluster_size,
         max_faults = args.max_faults,
         lossy = args.lossy,
-        "starting BFT cluster simulation"
+        chain_id = %args.chain_id,
+        "starting BFT cluster simulation (hardened v0.2)"
     );
 
     // ── Validate parameters ──
@@ -126,6 +133,9 @@ async fn main() {
     let mut client_txs: Vec<mpsc::Sender<(ClientRequest, mpsc::Sender<ClientResponse>)>> =
         Vec::new();
 
+    // FIX 5: Shared CancellationToken for coordinated shutdown
+    let cancel_token = CancellationToken::new();
+
     for i in 0..n {
         let (sender, receiver) = network.register(i).await;
 
@@ -136,6 +146,7 @@ async fn main() {
             peers: peers.clone(),
             data_dir: format!("{}/node_{}", args.data_dir, i),
             consensus_timeout_ms: args.timeout_ms,
+            chain_id: args.chain_id.clone(),
         };
 
         // Create storage
@@ -155,9 +166,12 @@ async fn main() {
         let (client_tx, client_rx) = mpsc::channel(64);
         client_txs.push(client_tx);
 
+        // FIX 5: Pass CancellationToken to engine
+        let cancel = cancel_token.clone();
+
         // Spawn consensus engine task
         tokio::spawn(async move {
-            engine.run(receiver, client_rx).await;
+            engine.run(receiver, client_rx, cancel).await;
         });
     }
 
@@ -214,13 +228,19 @@ async fn main() {
     // Let the system settle
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
+    // FIX 5: Graceful shutdown — cancel all engines
+    info!("shutting down cluster...");
+    cancel_token.cancel();
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
     // ── Summary ──
     println!("\n═══════════════════════════════════════════════════════════");
-    println!("  BFT Cluster Simulation Complete");
+    println!("  BFT Cluster Simulation Complete (Hardened v0.2)");
     println!("═══════════════════════════════════════════════════════════");
     println!("  Nodes:        {}", n);
     println!("  Max faults:   {} (quorum = {})", f, 2 * f + 1);
     println!("  Operations:   {}", args.demo_ops);
+    println!("  Chain ID:     {}", args.chain_id);
     println!("  Network mode: {}", if args.lossy { "LOSSY" } else { "CLEAN" });
     println!("═══════════════════════════════════════════════════════════");
 }

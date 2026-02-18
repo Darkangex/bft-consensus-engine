@@ -17,6 +17,7 @@ bft-storage = { path = "../bft-storage" }
 serde = { workspace = true }
 bincode = { workspace = true }
 tokio = { workspace = true }
+tokio-util = "0.7"
 clap = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

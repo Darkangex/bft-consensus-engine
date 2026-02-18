@@ -226,6 +226,9 @@ pub struct NodeConfig {
     pub data_dir: String,
     /// Consensus timeout in milliseconds before triggering view-change.
     pub consensus_timeout_ms: u64,
+    /// Unique chain identifier for replay attack protection.
+    /// All signed messages include this to prevent cross-chain replay.
+    pub chain_id: String,
 }
 
 impl NodeConfig {
@@ -349,6 +352,7 @@ mod tests {
             ],
             data_dir: "/tmp/node0".into(),
             consensus_timeout_ms: 5000,
+            chain_id: "test-chain".into(),
         };
         assert_eq!(cfg.quorum_size(), 3); // 2*1+1
         assert_eq!(cfg.leader_for_view(0), 0);
