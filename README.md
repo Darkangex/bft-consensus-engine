@@ -193,7 +193,7 @@ When the leader fails to propose within the timeout period:
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/bft-consensus-engine.git
+git clone https://github.com/Darkangex/bft-consensus-engine.git
 cd bft-consensus-engine
 
 # Build all crates
@@ -442,7 +442,7 @@ El consenso distribuido es uno de los problemas más difíciles en ciencias de l
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/<tu-usuario>/bft-consensus-engine.git
+git clone https://github.com/Darkangex/bft-consensus-engine.git
 cd bft-consensus-engine
 
 # Compilar todos los crates
