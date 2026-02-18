@@ -1,0 +1,10 @@
+[package]
+name = "bft-types"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+bincode = { workspace = true }
+bytes = { workspace = true }

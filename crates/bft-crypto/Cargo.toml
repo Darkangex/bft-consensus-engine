@@ -1,0 +1,14 @@
+[package]
+name = "bft-crypto"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+bft-types = { path = "../bft-types" }
+serde = { workspace = true }
+bincode = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

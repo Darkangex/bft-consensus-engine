@@ -1,0 +1,19 @@
+[package]
+name = "bft-consensus"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+bft-types = { path = "../bft-types" }
+bft-crypto = { path = "../bft-crypto" }
+bft-network = { path = "../bft-network" }
+bft-storage = { path = "../bft-storage" }
+serde = { workspace = true }
+bincode = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
